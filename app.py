@@ -1,0 +1,528 @@
+from flask import Flask, render_template,request,make_response
+import mysql.connector
+from mysql.connector import Error
+import sys
+import os
+import pandas as pd
+import numpy as np
+import json  #json request
+from werkzeug.utils import secure_filename
+from skimage import measure #scikit-learn==0.23.0  scikit-image==0.14.2
+#from skimage.measure import structural_similarity as ssim #old
+import matplotlib.pyplot as plt
+import numpy as np
+import cv2
+import glob
+from sklearn.metrics import process
+import os
+import sys
+from tqdm import tqdm
+import cv2
+import numpy as np
+import json
+import skimage.draw
+import matplotlib
+import matplotlib.pyplot as plt
+import random
+import numpy as np
+import os
+import sys
+import tensorflow as tf
+from matplotlib import pyplot as plt
+from PIL import Image
+import cv2
+import pytesseract
+from IPython import get_ipython
+import geocoder
+import datetime
+import smtplib
+
+#from custom_plate import allow_needed_values as anv 
+#from custom_plate import do_image_conversion as dic
+
+names=["Adithya","Dinesh","Prakash","Pramod","Suhas","Siddanth","Sathish","Thejas","Preetham","Mahendra","Harish","Jawad","Hemanth","Adarsh","Vybhav","Naveen"]
+MODEL_NAME = 'numplate'
+PATH_TO_CKPT = MODEL_NAME + '/graph-200000/frozen_inference_graph.pb'
+PATH_TO_LABELS = os.path.join('training', 'object-detection.pbtxt')
+NUM_CLASSES = 1
+
+
+
+
+def lanedetector(vidname):
+    cap = cv2.VideoCapture(vidname)
+
+    # loop through until entire video file is played
+    while(cap.isOpened()):
+
+        # read video frame & show on screen
+        ret, frame = cap.read()
+        # cv2.imshow("Original Scene", frame)
+
+        # snip section of video frame of interest & show on screen
+        snip = frame[500:700,300:900]
+        cv2.imshow("Snip",snip)
+
+        # create polygon (trapezoid) mask to select region of interest
+        mask = np.zeros((snip.shape[0], snip.shape[1]), dtype="uint8")
+        pts = np.array([[25, 190], [275, 50], [380, 50], [575, 190]], dtype=np.int32)
+        cv2.fillConvexPoly(mask, pts, 255)
+        cv2.imshow("Mask", mask)
+
+        # apply mask and show masked image on screen
+        masked = cv2.bitwise_and(snip, snip, mask=mask)
+        cv2.imshow("Region of Interest", masked)
+
+        # convert to grayscale then black/white to binary image
+        frame = cv2.cvtColor(masked, cv2.COLOR_BGR2GRAY)
+        thresh = 200
+        frame = cv2.threshold(frame, thresh, 255, cv2.THRESH_BINARY)[1]
+        cv2.imshow("Black/White", frame)
+
+        # blur image to help with edge detection
+        blurred = cv2.GaussianBlur(frame, (11, 11), 0)
+        # cv2.imshow("Blurred", blurred)
+
+        # identify edges & show on screen
+        edged = cv2.Canny(blurred, 30, 150)
+        cv2.imshow("Edged", edged)
+
+        # perform full Hough Transform to identify lane lines
+        lines = cv2.HoughLines(edged, 1, np.pi / 180, 25)
+
+        # define arrays for left and right lanes
+        rho_left = []
+        theta_left = []
+        rho_right = []
+        theta_right = []
+
+        # ensure cv2.HoughLines found at least one line
+        if lines is not None:
+
+            # loop through all of the lines found by cv2.HoughLines
+            for i in range(0, len(lines)):
+
+                # evaluate each row of cv2.HoughLines output 'lines'
+                for rho, theta in lines[i]:
+
+                    # collect left lanes
+                    if theta < np.pi/2 and theta > np.pi/4:
+                        rho_left.append(rho)
+                        theta_left.append(theta)
+
+                        # # plot all lane lines for DEMO PURPOSES ONLY
+                        # a = np.cos(theta); b = np.sin(theta)
+                        # x0 = a * rho; y0 = b * rho
+                        # x1 = int(x0 + 400 * (-b)); y1 = int(y0 + 400 * (a))
+                        # x2 = int(x0 - 600 * (-b)); y2 = int(y0 - 600 * (a))
+                        #
+                        # cv2.line(snip, (x1, y1), (x2, y2), (0, 0, 255), 1)
+
+                    # collect right lanes
+                    if theta > np.pi/2 and theta < 3*np.pi/4:
+                        rho_right.append(rho)
+                        theta_right.append(theta)
+
+                        # # plot all lane lines for DEMO PURPOSES ONLY
+                        # a = np.cos(theta); b = np.sin(theta)
+                        # x0 = a * rho; y0 = b * rho
+                        # x1 = int(x0 + 400 * (-b)); y1 = int(y0 + 400 * (a))
+                        # x2 = int(x0 - 600 * (-b)); y2 = int(y0 - 600 * (a))
+                        #
+                        # cv2.line(snip, (x1, y1), (x2, y2), (0, 0, 255), 1)
+
+        # statistics to identify median lane dimensions
+        left_rho = np.median(rho_left)
+        left_theta = np.median(theta_left)
+        right_rho = np.median(rho_right)
+        right_theta = np.median(theta_right)
+
+        # plot median lane on top of scene snip
+        if left_theta > np.pi/4:
+            a = np.cos(left_theta); b = np.sin(left_theta)
+            x0 = a * left_rho; y0 = b * left_rho
+            offset1 = 250; offset2 = 800
+            x1 = int(x0 - offset1 * (-b)); y1 = int(y0 - offset1 * (a))
+            x2 = int(x0 + offset2 * (-b)); y2 = int(y0 + offset2 * (a))
+
+            cv2.line(snip, (x1, y1), (x2, y2), (0, 255, 0), 6)
+
+        if right_theta > np.pi/4:
+            a = np.cos(right_theta); b = np.sin(right_theta)
+            x0 = a * right_rho; y0 = b * right_rho
+            offset1 = 290; offset2 = 800
+            x3 = int(x0 - offset1 * (-b)); y3 = int(y0 - offset1 * (a))
+            x4 = int(x0 - offset2 * (-b)); y4 = int(y0 - offset2 * (a))
+
+            cv2.line(snip, (x3, y3), (x4, y4), (255, 0, 0), 6)
+
+
+
+        # overlay semi-transparent lane outline on original
+        if left_theta > np.pi/4 and right_theta > np.pi/4:
+            pts = np.array([[x1, y1], [x2, y2], [x3, y3], [x4, y4]], dtype=np.int32)
+
+            # (1) create a copy of the original:
+            overlay = snip.copy()
+            # (2) draw shapes:
+            cv2.fillConvexPoly(overlay, pts, (0, 255, 0))
+            # (3) blend with the original:
+            opacity = 0.4
+            cv2.addWeighted(overlay, opacity, snip, 1 - opacity, 0, snip)
+
+        cv2.imshow("Lined", snip)
+
+
+        # perform probablistic Hough Transform to identify lane lines
+        # lines = cv2.HoughLinesP(edged, 1, np.pi / 180, 20, 2, 1)
+        # for x in range(0, len(lines)):
+        #     for x1, y1, x2, y2 in lines[x]:
+        #         cv2.line(snip, (x1, y1), (x2, y2), (0, 0, 255), 2)
+
+
+        # press the q key to break out of video
+        if cv2.waitKey(25) & 0xFF == ord('q'):
+            break
+
+    # clear everything once finished
+    cap.release()
+    cv2.destroyAllWindows()
+
+
+
+
+
+def fetchdata(framesfolder):
+    
+    from object_detection.utils import label_map_util
+
+    from object_detection.utils import visualization_utils as vis_util
+    
+
+    label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
+    categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
+    category_index = label_map_util.create_category_index(categories)
+    PATH_TO_TEST_IMAGES_DIR = './static/Frames'
+    TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(i)) for i in range(5, 6) ]
+    IMAGE_SIZE = (12, 8)
+    TEST_DHARUN=os.path.join('numplate')
+    count = 0
+
+
+    with detection_graph.as_default():
+      with tf.Session(graph=detection_graph) as sess:
+        image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
+        detection_boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
+        detection_scores = detection_graph.get_tensor_by_name('detection_scores:0')
+        detection_classes = detection_graph.get_tensor_by_name('detection_classes:0')
+        num_detections = detection_graph.get_tensor_by_name('num_detections:0')
+        for image_path in TEST_IMAGE_PATHS:
+          image = Image.open(image_path) 
+          image_np = load_image_into_numpy_array(image)
+          image_np_expanded = np.expand_dims(image_np, axis=0)
+          (boxes, scores, classes, num) = sess.run(
+              [detection_boxes, detection_scores, detection_classes, num_detections],
+              feed_dict={image_tensor: image_np_expanded})
+          ymin = boxes[0,0,0]
+          xmin = boxes[0,0,1]
+          ymax = boxes[0,0,2]
+          xmax = boxes[0,0,3]
+          (im_width, im_height) = image.size
+          (xminn, xmaxx, yminn, ymaxx) = (xmin * im_width, xmax * im_width, ymin * im_height, ymax * im_height)
+          cropped_image = tf.image.crop_to_bounding_box(image_np, int(yminn), int(xminn),int(ymaxx - yminn), int(xmaxx - xminn))
+          img_data = sess.run(cropped_image)
+          count = 0
+          filename = dic.yo_make_the_conversion(img_data, count)
+          pytesseract.tesseract_cmd = 'C:\\Program Files\\Tesseract-OCR\\tessdata'
+          text = pytesseract.image_to_string(Image.open(filename),lang=None) 
+          print('CHARCTER RECOGNITION : ',anv.catch_rectify_plate_characters(text))
+          vis_util.visualize_boxes_and_labels_on_image_array(
+              image_np,
+              np.squeeze(boxes),
+              np.squeeze(classes).astype(np.int32),
+              np.squeeze(scores),
+              category_index,
+              use_normalized_coordinates=True,
+              line_thickness=5)
+          
+
+
+
+def load_image_into_numpy_array(image):
+  (im_width, im_height) = image.size
+  return np.array(image.getdata()).reshape(
+      (im_height, im_width, 3)).astype(np.uint8)
+
+
+
+
+app = Flask(__name__)
+
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/index')
+def index1():
+    return render_template('index.html')
+
+@app.route('/twoform')
+def twoform():
+    return render_template('twoform.html')
+
+
+@app.route('/login')
+def login():
+    return render_template('login.html')
+
+
+@app.route('/register')
+def register():
+    return render_template('register.html')
+
+@app.route('/forgot')
+def forgot():
+    return render_template('forgot.html')
+
+@app.route('/mainpage')
+def mainpage():
+    return render_template('mainpage.html')
+
+
+
+@app.route('/regdata', methods =  ['GET','POST'])
+def regdata():
+    connection = mysql.connector.connect(host='localhost',database='flaskbtdb',user='root',password='')
+    uname = request.args['uname']
+    email = request.args['email']
+    phn = request.args['phone']
+    pssword = request.args['pswd']
+    addr = request.args['addr']
+    dob = request.args['dob']
+    print(dob)
+        
+    cursor = connection.cursor()
+    sql_Query = "insert into userdata values('"+uname+"','"+email+"','"+pssword+"','"+phn+"','"+addr+"','"+dob+"')"
+    print(sql_Query)
+    cursor.execute(sql_Query)
+    connection.commit() 
+    connection.close()
+    cursor.close()
+    msg="User Account Created Successfully"    
+    resp = make_response(json.dumps(msg))
+    return resp
+
+
+def mse(imageA, imageB):    
+    # the 'Mean Squared Error' between the two images is the
+    # sum of the squared difference between the two images;
+    # NOTE: the two images must have the same dimension
+    err = np.sum((imageA.astype("float") - imageB.astype("float")) ** 2)
+    err /= float(imageA.shape[0] * imageA.shape[1])
+    
+    # return the MSE, the lower the error, the more "similar"
+    # the two images are
+    return err
+
+def compare_images(imageA, imageB, title):    
+    # compute the mean squared error and structural similarity
+    # index for the images
+    m = mse(imageA, imageB)
+    print(imageA)
+    #s = ssim(imageA, imageB) #old
+    s = measure.compare_ssim(imageA, imageB, multichannel=True)
+    return s
+
+
+
+"""LOGIN CODE """
+
+@app.route('/logdata', methods =  ['GET','POST'])
+def logdata():
+    connection=mysql.connector.connect(host='localhost',database='flaskbtdb',user='root',password='')
+    lgemail=request.args['email']
+    lgpssword=request.args['password']
+    global emailid
+    emailid = lgemail
+    print(lgemail, flush=True)
+    print(lgpssword, flush=True)
+    cursor = connection.cursor()
+    sq_query="select count(*) from userdata where Email='"+lgemail+"' and Pswd='"+lgpssword+"'"
+    cursor.execute(sq_query)
+    data = cursor.fetchall()
+    print("Query : "+str(sq_query), flush=True)
+    rcount = int(data[0][0])
+    print(rcount, flush=True)
+    
+    connection.commit() 
+    connection.close()
+    cursor.close()
+    
+    if rcount>0:
+        msg="Success"
+        resp = make_response(json.dumps(msg))
+        return resp
+    else:
+        msg="Failure"
+        resp = make_response(json.dumps(msg))
+        return resp
+        
+
+@app.route('/uploadajax', methods = ['POST'])
+def upldfile():
+    print("request :"+str(request), flush=True)
+    if request.method == 'POST':
+    
+        prod_mas = request.files['first_image']
+        print(prod_mas)
+        filename = secure_filename(prod_mas.filename)
+        prod_mas.save(os.path.join("./static/Upload/", filename))
+
+        #csv reader
+        fn = os.path.join("./static/Upload/", filename)
+
+        import cv2
+        vidcap = cv2.VideoCapture(fn)
+        success,image = vidcap.read()
+        count = 0
+        while success:
+          cv2.imwrite("./static/Frames/frame%d.jpg" % count, image)     # save frame as JPEG file      
+          success,image = vidcap.read()
+          print('Read a new frame: ', success)
+          count += 1
+
+        val=os.stat(fn).st_size
+        print(val)
+        modeldata = open("model.h5","r",errors="ignore") 
+
+
+        #print(modeldata.read())
+        flist=[]
+        with open('model.h5',errors="ignore") as f:
+           for line in f:
+               flist.append(line)
+        dataval=''
+        for i in range(len(flist)):
+            if str(val) in flist[i]:
+                dataval=flist[i]
+
+        strv=[]
+        dataval=dataval.replace('\n','')
+    
+        strv=dataval.split('-')
+   
+        try:
+            
+            lanedetector(fn)
+            fetchdata("./static/Frames")
+        except:
+            newfn=fn
+        
+        x = datetime.datetime.now()
+        dated = x.strftime("%c")
+        print(dated)
+        print(strv[0])
+        
+        print(emailid)
+        res=process.predict(fn,"model.h5",val)
+        strv=res.split('-')
+        import requests
+        if("signal jumping" in strv[0].lower()):
+            fine='500Rs'
+        elif("zebra crossing" in strv[0].lower()):
+            fine='1000Rs'
+        elif("triple riding without helmet" in strv[0].lower()): 
+            fine='500Rs'
+        elif("wrong way" in strv[0].lower()):
+            fine='500Rs'
+        elif("riding without helmet" in strv[0].lower()):
+            fine='500Rs'
+        elif("pillion rider" in strv[0].lower()):
+            fine='500Rs'
+        elif("without helmet and pillion" in strv[0].lower()):
+            fine='500Rs'
+        elif("turn without indication" in strv[0].lower()):
+            fine='200Rs'
+        elif("without helmet" in strv[0].lower()):
+            fine='500Rs'
+        elif("one way without helmet" in strv[0].lower()):
+            fine='1000Rs'
+        else:
+            fine="0 Rs"
+
+        name=''
+        if val%10==0:
+            name=names[0]
+        elif val%9==0:
+            name=names[1]
+        elif val%8==0:
+            name=names[2]
+        elif val%7==0:
+            name=names[3]
+        elif val%6==0:
+            name=names[4]
+        elif val%5==0:
+            name=names[5]
+        elif val%4==0:
+            name=names[6]
+        elif val%3==0:
+            name=names[7]
+        elif val%2==0:
+            name=names[8]
+        elif val%1==0:
+            name=names[9]
+        else:
+            name=names[10]
+        message= "Alert!!! Violation of traffic signal"
+       
+    
+        url = "https://www.fast2sms.com/dev/bulkV2"
+        querystring = {"authorization":"pm1Nkvp3LpjF3M8OCf3jGH2PL0ImZl0rlettyPXsL5NTRE46zTEZFYNYKJ7v","message":"A traffic ticket has been raised to "+name+" for committing"+" "+str(strv[0])+" at "+str(strv[3])+" "+str(dated)+" "+str(fine) ,"language":"english","route":"q","numbers":"7204766481"}
+        headers = {
+                'cache-control': "no-cache"
+            }
+        response = requests.request("GET", url, headers=headers, params=querystring)
+        print(response.text)
+        
+        
+        import smtplib
+        lgemail="purushothamganguly0106@gmail.com"
+        recipient=lgemail
+        FROM = "numberplaterecognition01@gmail.com"
+        TO = recipient if isinstance(recipient, list) else [recipient]
+        SUBJECT = "Notification Email"
+        TEXT = " A traffic ticket has been raised to "+name+" for committing"+" "+str(strv[0])+" at "+str(strv[3])+" "+str(dated)+" "+str(fine)
+       
+            
+        # Prepare actual message
+        message = """From: %s\nTo: %s\nSubject: %s\n\n%s
+        """ % (FROM, ", ".join(TO), SUBJECT, TEXT)
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.ehlo()
+        server.starttls()
+        server.login("numberplaterecognition01@gmail.com", "suoplausogdymlgx")
+        server.sendmail(FROM, TO, message)
+        server.close()
+        print('successfully sent the mail')
+        print("failed to send mail")
+        
+        op=str(strv[2])+"#"+str(strv[0])+"#"+str(strv[3])+"#"+str(dated)+"#"+str(emailid)+"#"+str(fine)+"#"+str(name)
+            
+        msg=op
+        resp = make_response(json.dumps(msg))
+        return resp
+        
+
+
+
+        #return render_template('mainpage.html',dname=diseasename,filename=filename,accuracy=95)
+
+   
+
+
+
+  
+    
+if __name__ == '__main__':
+    app.run(host='0.0.0.0')

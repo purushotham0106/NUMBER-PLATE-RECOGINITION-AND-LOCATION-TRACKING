@@ -1,0 +1,39 @@
+        #message= "Alert!!! Violation of traffic signal"
+    
+        #url = "https://www.fast2sms.com/dev/bulkV2"
+        #querystring = {"authorization":"4hm3oibANELgvs8TVJjFHdq5wy0MeOCDpkSRu6tWY97KflInaBFfSmROUraN9MuDblpiBezx85tw26E0","message":"A traffic ticket has been raised to "+name+" for committing"+" "+str(strv[0])+" at "+str(strv[3])+" "+str(dated)+" "+str(fine) ,"language":"english","route":"q","numbers":"7204766481"}
+        headers = {
+            'cache-control': "no-cache"
+        }
+        #response = requests.request("GET", url, headers=headers, params=querystring)
+        #print(response.text)
+        
+        #import smtplib
+        #lgemail="purushothamganguly0106@gmail.com"
+        #recipient=lgemail
+        #FROM = "numberplaterecognition01@gmail.com"
+       # TO = recipient if isinstance(recipient, list) else [recipient]
+        #SUBJECT = "Notification Email"
+        #TEXT = " A traffic ticket has been raised to "+name+" for committing"+" "+str(strv[0])+" at "+str(strv[3])+" "+str(dated)+" "+str(fine)
+
+        # Prepare actual message
+        #message = """From: %s\nTo: %s\nSubject: %s\n\n%s
+        #""" % (FROM, ", ".join(TO), SUBJECT, TEXT)
+        #try:
+            #server = smtplib.SMTP("smtp.gmail.com", 587)
+            #server.ehlo()
+            #server.starttls()
+            #server.login("numberplaterecognition01@gmail.com", "suoplausogdymlgx")
+            #server.sendmail(FROM, TO, message)
+            #server.close()
+            #print('successfully sent the mail')
+        #except:
+           # print("failed to send mail")
+        
+
+        
+        #op=str(strv[2])+"#"+str(strv[0])+"#"+str(strv[3])+"#"+str(dated)+"#"+str(emailid)+"#"+str(fine)+"#"+str(name)
+        
+        #msg=op
+        #resp = make_response(json.dumps(msg))
+        #return resp
